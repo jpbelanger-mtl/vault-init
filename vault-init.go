@@ -38,14 +38,14 @@ func sendEmails(smtpFrom string, smtpHost *string, gpgKey []byte, vaultKey strin
 	}
 }
 
-func validateSmtp(smtpHost string) {
+func validateSmtp(smtpFrom string, smtpHost string) {
 	// Connect to the remote SMTP server.
 	c, err := smtp.Dial(smtpHost)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer c.Close()
-	c.Verify("support@appdirect.com")
+	c.Verify(smtpFrom)
 }
 
 func sendEmail(smtpFrom string, smtpHost *string, recipient string, vaultKey string, clustername *string) {
@@ -106,7 +106,7 @@ func main() {
 	}
 
 	fmt.Printf("Initializing smtp client\n")
-	validateSmtp(*smtpHost)
+	validateSmtp(*smtpFrom, *smtpHost)
 
 	fmt.Printf("Checking vault state\n")
 	initialized, err := vault.Sys().InitStatus()
