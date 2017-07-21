@@ -22,3 +22,27 @@ For now it only support keybase key. Used part of the CLI wrapper to fetch the k
   -vaultURL string
     	Vault cluster url in http(s)://<host>:<port> format (default "http://127.0.0.1:8200")
 ```
+
+## Initializing a vault
+
+example:
+```
+vault-init -keybase=keybase:jpbelanger -smtpFrom=no-reply@example.com -secretThreshold=1
+```
+
+This will initialize your vault and generate as many keys as CSV value in the keybase parameter. One the initialization is done, it will use the Keybase email address to send them their unseal key (encrypted with their PGP key)
+
+## Rekeying
+
+Similar to initializing, you can rekey by passing the `-rekey` parameter
+```
+vault-init -rekey -keybase=keybase:jpbelanger,keybase:anotheruser,keybase:mymom -smtpFrom=no-reply@example.com -secretThreshold=2
+```
+
+Once the rekey initialization is done, it will output a nonce token and ask you for your unseal key, so the operateur that triggers the rekey needs to be a unseal key owner. 
+You will need to provide the `nonce` token to the next unseal (if required) and they would type the following command:
+```
+vault-init -rekey -nonce=<value> -keybase=keybase:jpbelanger,keybase:anotheruser,keybase:mymom -smtpFrom=no-reply@example.com -secretThreshold=2
+```
+
+On the last required unseal key, the tool will receive the new unseal key (encrypted), output them at the console and send them by email to the PGP owner.
