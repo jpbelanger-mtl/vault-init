@@ -64,7 +64,7 @@ func sendEmail(smtpFrom string, smtpHost *string, recipient string, vaultKey str
 		log.Fatal(err)
 	}
 	defer wc.Close()
-	body := fmt.Sprintf("Subject: Vault initialization!\r\nA new vault cluster (%s) init was done.\nEnjoy your shiny new shared key. It is encrypted with your gpg key.\n---CUT HERE---\n%s\n---CUT HERE---", *clustername, vaultKey)
+	body := fmt.Sprintf("Subject: Vault initialization!\r\nA new vault cluster (%s) init was done.\nEnjoy your shiny new shared key. It is encrypted with your gpg key.\n---COMMAND---\n\necho \"%s\" | xxd -r -p | gpg\n\n---COMMAND---", *clustername, vaultKey)
 	buf := bytes.NewBufferString(body)
 	if _, err = buf.WriteTo(wc); err != nil {
 		log.Fatal(err)
@@ -158,6 +158,6 @@ func main() {
 		}
 		fmt.Printf("\nProcessing done...\n")
 	} else {
-		fmt.Printf("Cluster is already initialized, nothing to do")
+		fmt.Printf("Cluster is already initialized, nothing to do\n")
 	}
 }
