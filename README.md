@@ -9,8 +9,10 @@ For now it only support keybase key. Used part of the CLI wrapper to fetch the k
 ```
   -keybase string
     	Comma-separated list of keybase account to fetch key from
-  -secretShares int
-    	Number of secret shared key to generate (default 5)
+  -noonce string
+    	Nonce used for rekey progress
+  -rekey
+    	This will be a rekey operation
   -secretThreshold int
     	Secret threshold for unsealing the vault (default 3)
   -smtpFrom string
