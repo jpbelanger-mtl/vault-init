@@ -33,9 +33,11 @@ func sendEmails(smtpFrom string, smtpHost *string, gpgKey []byte, vaultKey strin
 	}
 
 	//For each Identities present into that key, send an email to the recipient with his encrypted shared vault key
-	for _, v := range entitylist[0].Identities {
-		fmt.Printf("\tSending to %s\n\t\t%v\n\n", v.UserId.Email, vaultKey)
-		sendEmail(smtpFrom, smtpHost, v.UserId.Email, vaultKey, clustername)
+	for _, entity := range entitylist {
+		for _, v := range entity.Identities {
+			fmt.Printf("\tSending to %s\n\t\t%v\n\n", v.UserId.Email, vaultKey)
+			sendEmail(smtpFrom, smtpHost, v.UserId.Email, vaultKey, clustername)
+		}
 	}
 }
 
@@ -43,7 +45,7 @@ func validateSmtp(smtpFrom string, smtpHost string) {
 	// Connect to the remote SMTP server.
 	c, err := smtp.Dial(smtpHost)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error while validating smtp server connection: %v", err)
 	}
 	defer c.Close()
 	c.Verify(smtpFrom)
@@ -80,6 +82,7 @@ func main() {
 	var keybaseList = flag.String("keybase", "", "Comma-separated list of keybase account to fetch key from")
 	var rekey = flag.Bool("rekey", false, "This will be a rekey operation")
 	var nonce = flag.String("noonce", "", "Nonce used for rekey progress")
+	var dryRun = flag.Bool("dryRun", false, "Is this a dry-run only")
 
 	flag.Parse()
 
@@ -97,6 +100,11 @@ func main() {
 	if len(keybases) == 0 {
 		print("keybase must contains at least one account name")
 		os.Exit(1)
+	}
+	for idx, keybaseEntry := range keybases {
+		if !strings.HasPrefix(keybaseEntry, "keybase:") {
+			keybases[idx] = "keybase:" + keybaseEntry
+		}
 	}
 
 	var secretShares = len(keybases)
@@ -137,22 +145,42 @@ func main() {
 		fmt.Printf("Secret threshold: %v\n", initRequest.SecretThreshold)
 		fmt.Printf("Number of GPG keys: %v\n\n", len(initRequest.PGPKeys))
 
-		initResponse, err := vault.Sys().Init(&initRequest)
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Printf("Cluster was initialized with %v shares\n\n", len(initRequest.PGPKeys))
-		fmt.Printf("\troot token: %v\n\t", initResponse.RootToken)
-		fmt.Printf("Sending secret shares to each owners by email, processing count: %v\n", len(initResponse.Keys))
-
-		for index, keyB64 := range initResponse.Keys {
-			//Decoding the base64 (non-armored) PGP key into binary
-			decodedKey, err := base64.StdEncoding.DecodeString(initRequest.PGPKeys[index])
+		if !*dryRun {
+			initResponse, err := vault.Sys().Init(&initRequest)
 			if err != nil {
 				panic(err)
 			}
-			sendEmails(*smtpFrom, smtpHost, decodedKey, keyB64, vaultURL)
+
+			fmt.Printf("Cluster was initialized with %v shares\n\n", len(initRequest.PGPKeys))
+			fmt.Printf("\troot token: %v\n\t", initResponse.RootToken)
+			fmt.Printf("Sending secret shares to each owners by email, processing count: %v\n", len(initResponse.Keys))
+
+			for index, keyB64 := range initResponse.Keys {
+				//Decoding the base64 (non-armored) PGP key into binary
+				decodedKey, err := base64.StdEncoding.DecodeString(initRequest.PGPKeys[index])
+				if err != nil {
+					panic(err)
+				}
+				sendEmails(*smtpFrom, smtpHost, decodedKey, keyB64, vaultURL)
+			}
+		} else {
+			for _, key := range initRequest.PGPKeys {
+				decodedKey, err := base64.StdEncoding.DecodeString(key)
+				if err != nil {
+					panic(err)
+				}
+				entitylist, err := openpgp.ReadKeyRing(bytes.NewBuffer(decodedKey))
+				if err != nil {
+					panic(err)
+				}
+
+				//For each Identities present into that key, send an email to the recipient with his encrypted shared vault key
+				for _, entity := range entitylist {
+					for _, v := range entity.Identities {
+						fmt.Printf("\tWould send to %s\n", v.UserId.Email)
+					}
+				}
+			}
 		}
 		fmt.Printf("\nProcessing done...\n")
 	} else if *rekey {
@@ -215,6 +243,7 @@ func main() {
 
 func getPGPKeys(keybases []string) []string {
 	var PGPKeys []string
+	log.Printf("Fetching keybase users: %v", keybases)
 	keybaseMap, err := vaultpgp.FetchKeybasePubkeys(keybases)
 	if err != nil {
 		log.Fatal(err)
