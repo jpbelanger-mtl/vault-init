@@ -19,6 +19,7 @@ import (
 	"net/smtp"
 	"os"
 	"strings"
+	"syscall"
 
 	vaultapi "github.com/hashicorp/vault/api"
 	vaultpgp "github.com/hashicorp/vault/helper/pgpkeys"
@@ -26,7 +27,7 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
-func sendEmails(smtpFrom string, smtpHost *string, gpgKey []byte, vaultKey string, clustername *string) {
+func sendEmails(smtpFrom string, smtpHost string, gpgKey []byte, vaultKey string, clustername string, smtpUser string, smtpPassword string) {
 	entitylist, err := openpgp.ReadKeyRing(bytes.NewBuffer(gpgKey))
 	if err != nil {
 		panic(err)
@@ -36,7 +37,7 @@ func sendEmails(smtpFrom string, smtpHost *string, gpgKey []byte, vaultKey strin
 	for _, entity := range entitylist {
 		for _, v := range entity.Identities {
 			fmt.Printf("\tSending to %s\n\t\t%v\n\n", v.UserId.Email, vaultKey)
-			sendEmail(smtpFrom, smtpHost, v.UserId.Email, vaultKey, clustername)
+			sendEmail(smtpFrom, smtpHost, v.UserId.Email, vaultKey, clustername, smtpUser, smtpPassword)
 		}
 	}
 }
@@ -51,31 +52,21 @@ func validateSmtp(smtpFrom string, smtpHost string) {
 	c.Verify(smtpFrom)
 }
 
-func sendEmail(smtpFrom string, smtpHost *string, recipient string, vaultKey string, clustername *string) {
+func sendEmail(smtpFrom string, smtpHost string, recipient string, vaultKey string, clustername string, smtpUser string, smtpPassword string) {
 	// Connect to the remote SMTP server.
-	c, err := smtp.Dial(*smtpHost)
+	auth := smtp.PlainAuth("", smtpUser, smtpPassword, strings.Split(smtpHost, ":")[0])
+
+	body := fmt.Sprintf("Subject: Vault initialization!\r\nA new vault cluster (%s) init was done.\nEnjoy your shiny new shared key. It is encrypted with your gpg key.\n---COMMAND---\n\necho \"%s\" | xxd -r -p | gpg\n\n---COMMAND---", clustername, vaultKey)
+
+	err := smtp.SendMail(smtpHost, auth, smtpFrom, []string{recipient}, []byte(body))
 	if err != nil {
-		log.Fatal(err)
-	}
-	defer c.Close()
-	// Set the sender and recipient.
-	c.Mail(smtpFrom)
-	c.Rcpt(recipient)
-	// Send the email body.
-	wc, err := c.Data()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer wc.Close()
-	body := fmt.Sprintf("Subject: Vault initialization!\r\nA new vault cluster (%s) init was done.\nEnjoy your shiny new shared key. It is encrypted with your gpg key.\n---COMMAND---\n\necho \"%s\" | xxd -r -p | gpg\n\n---COMMAND---", *clustername, vaultKey)
-	buf := bytes.NewBufferString(body)
-	if _, err = buf.WriteTo(wc); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func main() {
 	var smtpFrom = flag.String("smtpFrom", "", "From email address")
+	var smtpUser = flag.String("smtpUser", "", "Username to auth for smtp server")
 	var smtpHost = flag.String("smtpHost", "localhost:25", "SMTP host to use in <host>:<port> format")
 	var vaultURL = flag.String("vaultURL", "http://127.0.0.1:8200", "Vault cluster url in http(s)://<host>:<port> format")
 	var secretThreshold = flag.Int("secretThreshold", 3, "Secret threshold for unsealing the vault")
@@ -83,8 +74,12 @@ func main() {
 	var rekey = flag.Bool("rekey", false, "This will be a rekey operation")
 	var nonce = flag.String("noonce", "", "Nonce used for rekey progress")
 	var dryRun = flag.Bool("dryRun", false, "Is this a dry-run only")
-
 	flag.Parse()
+
+	fmt.Print("Enter SMTP Password: ")
+	bytePassword, err := terminal.ReadPassword(int(syscall.Stdin))
+	smtpPassword := string(bytePassword)
+	fmt.Println("\nAccepted, processing")
 
 	if *smtpFrom == "" {
 		print("smtpFrom is required, please provide a valid email address")
@@ -161,7 +156,7 @@ func main() {
 				if err != nil {
 					panic(err)
 				}
-				sendEmails(*smtpFrom, smtpHost, decodedKey, keyB64, vaultURL)
+				sendEmails(*smtpFrom, *smtpHost, decodedKey, keyB64, *vaultURL, *smtpUser, smtpPassword)
 			}
 		} else {
 			for _, key := range initRequest.PGPKeys {
@@ -232,7 +227,7 @@ func main() {
 					if err != nil {
 						panic(err)
 					}
-					sendEmails(*smtpFrom, smtpHost, decodedKey, keyB64, vaultURL)
+					sendEmails(*smtpFrom, *smtpHost, decodedKey, keyB64, *vaultURL, *smtpUser, smtpPassword)
 				}
 			}
 		}
