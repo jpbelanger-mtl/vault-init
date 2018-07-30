@@ -56,7 +56,7 @@ func sendEmail(smtpFrom string, smtpHost string, recipient string, vaultKey stri
 	// Connect to the remote SMTP server.
 	auth := smtp.PlainAuth("", smtpUser, smtpPassword, strings.Split(smtpHost, ":")[0])
 
-	body := fmt.Sprintf("Subject: Vault initialization!\r\nA new vault cluster (%s) init was done.\nEnjoy your shiny new shared key. It is encrypted with your gpg key.\n---COMMAND---\n\necho \"%s\" | xxd -r -p | gpg\n\n---COMMAND---", clustername, vaultKey)
+	body := fmt.Sprintf("Subject: Vault initialization! (%s)\r\n\r\nA new vault cluster (%s) init was done.\nEnjoy your shiny new shared key. It is encrypted with your gpg key.\n---COMMAND---\n\necho \"%s\" | xxd -r -p | gpg\n\n---COMMAND---", clustername, clustername, vaultKey)
 
 	err := smtp.SendMail(smtpHost, auth, smtpFrom, []string{recipient}, []byte(body))
 	if err != nil {
